@@ -60,22 +60,6 @@ int powmod(int a, int x, int q)
     return r;
 }
 
-int genPrimitiveRoot(int q)
-{
-    int x;
-    int y = (q-1)/2;
-    srand(std::time(NULL));
-    while(1)
-    {
-        //std::cout << "Trying " << x << std::endl;
-        x = rand()%q; // Random number less than q
-        if (powmod(x, y, q) == (q - 1)) // Test if primitive root
-        {
-            return x;
-        }
-    }
-}
-
 int distributeSessionKey()
 {
     // First receive is IDA || IDB || E_Ka[ N1 ] -> 2B || 2B || 4B -> 8 Bytes
@@ -214,13 +198,6 @@ int newUser()
 
 int __cdecl main(int argc, char* argv[])
 {
-    // ID file, contains 2 byte ID (stored in hexadecimal) and 10 bit key (stored in binary)
-    //keyfile.open("kdckeys.txt");
-    keychain[1] = 917;
-    keychain[2] = 172;
-
-    //std::cout << itoa(std::time(0), tmp, 16 );
-
 	if (argc < 2)
     {
 		std::cerr << "usage: " << argv[0] << " port" << std::endl;

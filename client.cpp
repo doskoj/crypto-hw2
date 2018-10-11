@@ -55,9 +55,21 @@ void testInit() // Initial parameters for testing distribution
     }
 }
 
-long f(long in)
+/*
+ * F function for verification
+ * Basic Hashing function using the shared key and DES block encryption
+ */
+char f(long in, int k)
 {
-    return in;
+    Toydes t = Toydes();
+    char tmp;
+    char res = 0x0;
+    for (int i = 0; i < 4; i++)
+    {
+        tmp = (in >> (8*i))&0xff;
+        res = res^t.decryptByte(tmp, k);
+    }
+    return res;
 }
 
 /*
@@ -405,14 +417,14 @@ int sendSessionKey(const char* port, const char* peer)
         return 1;
     }
 
-    long response = f(time);
+    char response = f(time, keychain[idR]);
 
-    sendbuf[0] = t.encryptByte((response >> 24)&0xff, keychain[idR]);
-    sendbuf[1] = t.encryptByte((response >> 16)&0xff, keychain[idR]);
-    sendbuf[2] = t.encryptByte((response >> 8)&0xff, keychain[idR]);
-    sendbuf[3] = t.encryptByte((response)&0xff, keychain[idR]);
+    sendbuf[0] = t.encryptByte((response)&0xff, keychain[idR]);
+    //sendbuf[1] = t.encryptByte((response >> 16)&0xff, keychain[idR]);
+    //sendbuf[2] = t.encryptByte((response >> 8)&0xff, keychain[idR]);
+    //sendbuf[3] = t.encryptByte((response)&0xff, keychain[idR]);
 
-    iResult = send(connectSocket, sendbuf, 4, 0);
+    iResult = send(connectSocket, sendbuf, 1, 0);
     if (iResult == SOCKET_ERROR)
     {
         std::cerr << "send failed with error " << WSAGetLastError() << std::endl;
@@ -494,6 +506,8 @@ int accept(const char* port)
         return 1;
     }
 
+    std::cout << "connected" << std::endl;
+
     Toydes t = Toydes();
     iResult = recv(peerSocket, recvbuf, 8, 0);
     if (iResult > 0)
@@ -527,7 +541,7 @@ int accept(const char* port)
         return 1;
     }
 
-    iResult = recv(peerSocket, recvbuf, 4, 0);
+    iResult = recv(peerSocket, recvbuf, 1, 0);
     if (iResult < 0)
     {
         std::cerr << "recv failed with error " << WSAGetLastError() << std::endl;
@@ -536,8 +550,9 @@ int accept(const char* port)
         return 1;
     }
 
-    long received = (t.decryptByte(recvbuf[0], keychain[idS]) << 24) + (t.decryptByte(recvbuf[1], keychain[idS]) << 16) + (t.decryptByte(recvbuf[2], keychain[idS]) << 8) + t.decryptByte(recvbuf[3], keychain[idS]);
-    if (received != f(response))
+    char received = t.decryptByte(recvbuf[0], keychain[idS])&0xff;
+    //std::cout << received << " " << f(response, keychain[idS]) << std::endl;
+    if (received != f(response, keychain[idS]))
     {
         std::cerr << "Validation failed" << std::endl;
         keychain.erase(idS);
@@ -617,8 +632,9 @@ int main (int argc, char* argv[])
             server = in1.c_str();
             generateKey(serverPort);
         }
-        else if (command == "accept") // usage: accept port
+        else if (command == "accept") // usage: accept
         {
+            std::cout << "Waiting for connection... ";
             accept(clientPort);
         }
         else if (command == "powmod")
