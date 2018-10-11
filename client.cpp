@@ -82,13 +82,14 @@ int powmod(int a, int x, int q)
 
 int genPrimitiveRoot(int q)
 {
-    int x = rand()%q;
+    int x;
     int y = (q-1)/2;
     srand(std::time(NULL));
+    //rpg.init_fast(q); // Only get primes less than q
     while(1)
     {
         //std::cout << "Trying " << x << std::endl;
-        x = (x+1)%q; // Random number less than q
+        x = rand()%q; // Random number less than q
         if (powmod(x, y, q) == (q - 1)) // Test if primitive root
         {
             return x;
@@ -159,10 +160,10 @@ int generateKey(const char* port)
 
     RandomPrimeGenerator rpg = RandomPrimeGenerator();
     rpg.init_fast(32768);
-    p = rpg.get();
     q = rpg.get();
+    p = genPrimitiveRoot(q);
     //std::cout << p << " " << q << " ";
-    int x = genPrimitiveRoot(q);
+    int x = rand()%q;
 
     int ya = powmod(p, x, q);
     //std::cout << ya << std::endl;
@@ -264,15 +265,15 @@ int getSessionKey(const char* port)
     Toydes t = Toydes();
     char tmp;
     long time = std::time(0);
-//      sendbuf[0] = t.encryptByte(tmp, key);
+    //std::cout << "Time: " << time << std::endl;
 
     sendbuf[0] = ((idS >> 8) & 0xff);
     sendbuf[1] = (idS & 0xff);
     sendbuf[2] = ((idR >> 8) & 0xff);
     sendbuf[3] = (idR & 0xff);
-    sendbuf[4] = t.encryptByte((time<<24)&0xff, key);
-    sendbuf[5] = t.encryptByte((time<<16)&0xff, key);
-    sendbuf[6] = t.encryptByte((time<<8)&0xff, key);
+    sendbuf[4] = t.encryptByte((time>>24)&0xff, key);
+    sendbuf[5] = t.encryptByte((time>>16)&0xff, key);
+    sendbuf[6] = t.encryptByte((time>>8)&0xff, key);
     sendbuf[7] = t.encryptByte((time)&0xff, key);
 
     iResult = send(connectSocket, sendbuf, 8, 0);
@@ -304,8 +305,8 @@ int getSessionKey(const char* port)
         return 1;
     }
 
-    keychain[idR] = ((t.decryptByte(recvbuf[0], key) << 8)&0x3) + (t.decryptByte(recvbuf[1], key)&0xff);
-    //std::cout << "Key: " << t.cts(keychain[idR], 10) << std::endl;
+    keychain[idR] = ((t.decryptByte(recvbuf[0], key)&0x3) << 8) + (t.decryptByte(recvbuf[1], key)&0xff);
+    std::cout << "Session key: " << keychain[idR] << " " << t.cts(keychain[idR], 10) << std::endl;
 
     for (int i = 0; i < 8; i++)
     {
@@ -498,7 +499,7 @@ int accept(const char* port)
     if (iResult > 0)
     {
         idS = ((t.decryptByte(recvbuf[2], key)&0xff)<<8) + t.decryptByte(recvbuf[3], key)&0xff;
-        keychain[idS] = ((t.decryptByte(recvbuf[0], key) << 8)&0x3) + (t.decryptByte(recvbuf[1], key)&0xff);
+        keychain[idS] = ((t.decryptByte(recvbuf[0], key)&0x3) << 8) + (t.decryptByte(recvbuf[1], key)&0xff);
         std::cout << "Key received from peer with id " << idS << std::endl << "Validating... ";
     }
     else if (iResult < 0)
@@ -547,6 +548,8 @@ int accept(const char* port)
 
     std::cout << "Validation succeeded" << std::endl;
 
+    std::cout << "Session key: " << keychain[idS] << " " << t.cts(keychain[idS], 10) << std::endl;
+
     iResult = shutdown(peerSocket, SD_SEND);
     if (iResult == SOCKET_ERROR)
     {
@@ -568,34 +571,14 @@ int sendMessage()
 
 int main (int argc, char* argv[])
 {
-    /*
-    if (argc < 6)
+    if (argc < 3)
     {
-    	std::cerr << "usage: " << argv[0] << " server-address port sender-id receiver-id key" << std::endl;
-    	exit(1);
+        std::cerr << "usage: " << argv[0] << " server-port client-port" << std::endl;
+        exit(1);
     }
 
-
-    char* port = argv[2];
-    if (atoi(port) < 0 || atoi(port) > 65535)
-    {
-    	std::cerr << "ERROR: Invalid port number" << std::endl;
-    	exit(1);
-    }
-
-
-    server = argv[1];
-    key = atoi(argv[5])&0x3ff;
-
-    idS = atoi(argv[3]);
-    idR = atoi(argv[4]);
-    */
-
-    if (argc > 1)
-    {
-        id = atoi(argv[1]);
-        testInit();
-    }
+    char* serverPort = argv[1];
+    char* clientPort = argv[2];
 
     std::string command;
     std::string in1;
@@ -607,16 +590,21 @@ int main (int argc, char* argv[])
     {
         std::cout << ">> ";
         std::cin >> command;
-        if (command == "getsessionkey")  // usage: getsessionkey sender-id receiver-id server-address peer-address
+        if (command == "getsessionkey")  // usage: getsessionkey receiver-id server-address peer-address
         {
-            std::cin >> in1 >> in2 >> in3 >> in4;
-            idS = atoi(in1.c_str());
-            idR = atoi(in2.c_str());
-            server = in3.c_str();
-            if (!getSessionKey("2001"))
+            std::cin >> in1 >> in2 >> in3;
+            if (!id)
+            {
+                std::cout << "Error: must generate key with Key Distribution Center" << std::endl;
+                continue;
+            }
+            idS = id;
+            idR = atoi(in1.c_str());
+            server = in2.c_str();
+            if (!getSessionKey(serverPort))
             {
                 std::cout << "Key received successfully" << std::endl;
-                sendSessionKey(DEFAULT_PORT, in4.c_str());
+                sendSessionKey(clientPort, in3.c_str());
             }
         }
         else if (command == "send") // usage: send receiver-id
@@ -627,12 +615,11 @@ int main (int argc, char* argv[])
         {
             std::cin >> in1;
             server = in1.c_str();
-            generateKey("2001");
+            generateKey(serverPort);
         }
         else if (command == "accept") // usage: accept port
         {
-            std::cin >> in1;
-            accept(in1.c_str());
+            accept(clientPort);
         }
         else if (command == "powmod")
         {

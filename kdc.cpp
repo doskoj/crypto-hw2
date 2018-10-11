@@ -62,13 +62,13 @@ int powmod(int a, int x, int q)
 
 int genPrimitiveRoot(int q)
 {
-    int x = rand()%q;
+    int x;
     int y = (q-1)/2;
     srand(std::time(NULL));
     while(1)
     {
         //std::cout << "Trying " << x << std::endl;
-        x = (x+1)%q; // Random number less than q
+        x = rand()%q; // Random number less than q
         if (powmod(x, y, q) == (q - 1)) // Test if primitive root
         {
             return x;
@@ -91,7 +91,6 @@ int distributeSessionKey()
     {
         idA = (recvbuf[0] << 8) + (recvbuf[1]&0xff);
         idB = (recvbuf[2] << 8) + (recvbuf[3]&0xff);
-        //n1 = (recvbuf[4] << 24) + (recvbuf[5] << 16) + (recvbuf[6] << 8) + recvbuf[7];
         //tmp = t.decryptByte(recvbuf[0], key);
 
     }
@@ -102,27 +101,6 @@ int distributeSessionKey()
         WSACleanup();
         return 1;
     }
-
-//    std::cout << t.cts(recvbuf[0], 8) << " " << t.cts(recvbuf[1], 8) << " " << t.cts(recvbuf[2], 8) << " " << t.cts(recvbuf[3], 8) << std::endl;
-    char tmp2[5];
-    char tmp3[11];
-    //bool found[] = {false, false};
-//  std::cout << idA << " " << idB << " " << n1 << std::endl;
-    /*
-    while ((keyfile >> tmp2 >> tmp3) && !(found[0] && found[1]))
-    {
-//        std::cout << tmp2 << " " << tmp3 << std::endl; 
-        if (strtol(tmp2, NULL, 16) == idA){
-            keyA = strtol(tmp3, NULL, 2);
-            found[0] = true;
-        }
-        if (strtol(tmp2, NULL, 16) == idB){
-            keyB = strtol(tmp3, NULL, 2);
-            found[1] = true;
-        }
-    }
-    */
-
 
     if (keychain.find(idA) == keychain.end())
     {
@@ -137,21 +115,24 @@ int distributeSessionKey()
     keyA = keychain[idA];
     keyB = keychain[idB];
 
+    long n1 = ((t.decryptByte(recvbuf[4], keyA)&0xff) << 24) + ((t.decryptByte(recvbuf[5], keyA)&0xff) << 16) + ((t.decryptByte(recvbuf[6], keyA)&0xff) << 8) + (t.decryptByte(recvbuf[7], keyA)&0xff);
+
+    std::cout << "User with id " << idA << " requests key for communication with user with id " << idB << std::endl;
+
+    if ((std::time(0) - n1) > 300){
+        std::cout << "Error invalid timestamp " << std::time(0) << " " << n1 << std::endl;
+        return 1;
+    }
+
     // At this point we know that there are records of both A and B, so it is time to generate the session key, and prepare the package to send back to A
     srand(std::time(NULL));
-    int ks = rand()%1024;
-    /*
-    for (int i = 0; i < 10; i++)
-    {
-        //Choose each of the 10 bits as a random number
-        ks += ((rand()%2) << i);
-    }
-    */
-    std::cout << "Key: " << t.cts(ks, 10) << std::endl;
+    int ks = rand()&0x3ff;
+
+    std::cout << "Generated session key " << idA << " -> " << idB << ": " << ks << " " << t.cts(ks, 10) << std::endl;
 
     // The returned package is E_Ka[ Ks || IDB || N1 || E_Kb[ Ks || IDA || N1 ]]
     // --------------> 6b padding + 10b  || 2B || 4B || ( 6b padding + 10b || 2B || 4B ) = 16B
-    sendbuf[0] = t.encryptByte((ks >> 8)&0x3, keyA);
+    sendbuf[0] = t.encryptByte((ks >> 8)&0xff, keyA);
     sendbuf[1] = t.encryptByte((ks&0xff), keyA);
     sendbuf[2] = t.encryptByte((idB >> 8)&0xff, keyA);
     sendbuf[3] = t.encryptByte((idB)&0xff, keyA);
@@ -204,7 +185,8 @@ int newUser()
     }
 
     //std::cout << p << " " << q << " ";
-    int x = genPrimitiveRoot(q);
+    srand(std::time(NULL));
+    int x = rand()%q;
 
     //std::cout << ya << std::endl;
     yb = powmod(p, x, q);
