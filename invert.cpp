@@ -6,7 +6,7 @@ int main(int argc, char * argv[])
 	int n = atoi(argv[2]);
 	int m = 1;
 	int k = 1;
-	while (abs(k*n - m*a) != 1)
+	while ((abs(k*n - m*a) != 1) || ((a*m)%n != 1))
 	{
 		if (k*n > m*a) m++;
 		else if (k*n < m*a) k++;
